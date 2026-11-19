@@ -1,0 +1,10 @@
+.Rhistory
+.RData
+.Rproj.user/
+*_files/
+*.aux
+*.log
+*.out
+*.fls
+*.fdb_latexmk
+resultados_articulo.rds

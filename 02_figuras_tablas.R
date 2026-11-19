@@ -1,0 +1,23 @@
+# Exporta todas las figuras (PNG) y tablas (CSV) del artículo
+# Requiere haber ejecutado antes 01_analisis.R (crea resultados_articulo.rds)
+source("graficos.R")
+r <- readRDS("resultados_articulo.rds")
+dir.create("figuras", showWarnings = FALSE)
+dir.create("tablas", showWarnings = FALSE)
+
+guardar <- function(g, archivo, w, h) ggsave(file.path("figuras", archivo), g, width = w, height = h, dpi = 300)
+guardar(fig_anio(r),    "fig1_credito_por_anio.png",       3.4, 1.9)
+guardar(fig_forest(r),  "fig2_razones_de_odds.png",        3.4, 2.8)
+guardar(fig_roc_cal(r), "fig3_roc_calibracion.png",        3.4, 1.75)
+guardar(fig_cv(r),      "fig4_auc_por_departamento.png",   3.4, 3.3)
+guardar(fig_prob(r),    "fig5_probabilidades_predichas.png", 3.4, 1.9)
+
+escribir <- function(tab, archivo) write_csv(tab, file.path("tablas", archivo))
+escribir(tabla_flujo(r),       "tabla1_flujo_registros.csv")
+escribir(tabla_desc(r),        "tabla2_descriptivos.csv")
+escribir(tabla_lr(r),          "tabla3_razon_verosimilitudes.csv")
+escribir(tabla_coef(r),        "tabla4_coeficientes.csv")
+escribir(tabla_comparacion(r), "tabla5_modelo_completo_vs_reducido.csv")
+escribir(tabla_robustez(r),    "tabla6_robustez.csv")
+escribir(r$cv$auc_dep |> mutate(nombre = dep_nom[departamento]), "tabla_auc_departamentos.csv")
+cat("Listo: figuras en ./figuras y tablas en ./tablas\n")
