@@ -43,6 +43,7 @@ cal <- tibble(p = fitted(m), y = datos$credito) |> mutate(dec = ntile(p, 10)) |>
 res <- list(
   cal = cal,
   n_total = nrow(ena), n = nrow(datos), prev = mean(datos$credito),
+  n_base_1424 = sum(ena$anio <= 2024), n_base_25 = sum(ena$anio == 2025),
   por_anio = datos |> group_by(anio) |> summarise(n = n(), pct = 100*mean(credito), .groups = "drop"),
   desc = datos |> group_by(credito) |>
     summarise(n = n(), edad = mean(edad), mujer = 100*mean(mujer=="Sí"), lengua = 100*mean(lengua_originaria=="Sí"),

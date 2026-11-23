@@ -50,9 +50,9 @@ tabla_flujo <- function(r) tibble::tribble(
   ~Etapa, ~Registros,
   "Filas de la base unida 2014–2024", "3 843 598",
   "Filas de los módulos de 2025 (15 archivos)", "1 849 052",
-  "Productor-año 2014–2024, tras agregar", "349 388",
-  "2014–2024 tras limpieza y sin 2021", "259 110",
-  "Productores de 2025, tras agregar", "38 449",
+  "Productor-año 2014–2024, tras agregar", "349 117",
+  "2014–2024, sin 2021 y solo pequeños/medianos productores", fn(r$n_base_1424),
+  "Productores de 2025, tras agregar", fn(r$n_base_25),
   "Base consolidada 2014–2025", fn(r$n_total),
   "Casos completos (modelo)", fn(r$n))
 
@@ -156,7 +156,7 @@ fig_forest <- function(r) {
     ggplot(aes(or, etiqueta, colour = lado)) +
     geom_vline(xintercept = 1, linetype = "dashed", colour = "grey55", linewidth = 0.3) +
     geom_pointrange(aes(xmin = lo, xmax = hi), size = 0.18, linewidth = 0.4) +
-    scale_x_log10(breaks = c(0.5, 0.75, 1, 1.5, 2, 3)) +
+    scale_x_log10(breaks = c(0.5, 0.75, 1, 1.5, 2, 3), limits = c(0.45, 3.6)) +
     scale_colour_manual(values = c(`TRUE` = tinta, `FALSE` = acento), guide = "none") +
     labs(x = "Razón de odds", y = NULL) + tema_articulo()
 }
@@ -181,11 +181,17 @@ fig_cv <- function(r) {
   cvd |>
     mutate(nombre = fct_reorder(nombre, auc), puno = departamento == "21") |>
     ggplot(aes(auc, nombre, colour = puno)) +
-    geom_vline(xintercept = r$cv$auc_bl, linetype = "dashed", colour = "grey55", linewidth = 0.3) +
     geom_segment(aes(x = 0.64, xend = auc, yend = nombre), linewidth = 0.25, colour = "grey75") +
+    # líneas de referencia: deben verse al imprimir (negras, 0.6 pt, con etiqueta)
+    geom_vline(xintercept = r$cv$auc_bl, linetype = "dashed", colour = tinta, linewidth = 0.6) +
+    geom_vline(xintercept = r$cv$auc_al, linetype = "dotted", colour = acento, linewidth = 0.6) +
+    annotate("label", x = r$cv$auc_bl, y = 1.2, hjust = 1.05, size = 2.1, family = fuente, label.size = 0,
+             label = paste0("Global bloqueado = ", f2(r$cv$auc_bl, 3))) +
+    annotate("label", x = r$cv$auc_al, y = 2.6, hjust = -0.05, size = 2.1, family = fuente, label.size = 0,
+             colour = acento, label = paste0("Aleatorio = ", f2(r$cv$auc_al, 3))) +
     geom_point(size = 1.4) +
     scale_colour_manual(values = c(`TRUE` = acento, `FALSE` = tinta), guide = "none") +
-    scale_x_continuous(limits = c(0.64, 0.81)) +
+    scale_x_continuous(limits = c(0.64, 0.82)) +
     labs(x = "AUC fuera de muestra", y = NULL) + tema_articulo() +
     theme(axis.text.y = element_text(size = 6.8))
 }

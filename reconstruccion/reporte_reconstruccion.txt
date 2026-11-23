@@ -1,0 +1,76 @@
+Unidades agropecuarias (todas): 320,286
+Con módulo de crédito respondido: 308,465
+Por año y tipo de productor (CODIGO 1 = pequeño/mediano, 2 = grande):
+codigo      1.0     2.0
+anio                   
+2014    26168.0   903.0
+2015    26848.0  1157.0
+2016    27500.0  1340.0
+2017    27442.0  1355.0
+2018    27088.0  1399.0
+2019    26937.0  1427.0
+2022    29244.0     NaN
+2023    30526.0     NaN
+2024    37514.0  1598.0
+2025    38449.0  1570.0
+Base consolidada, solo pequeños y medianos productores: 297,716   [artículo: 297 559]
+  2014-2024: 259,267 [artículo: 259 110]   2025: 38,449 [artículo: 38 449]
+Casos completos en las 17 variables: 294,068   [artículo: 293 910]
+Con crédito en la muestra: 34,233   [artículo: 34 192]
+
+Por año: n, % crédito   [artículo: 2014 13.8 %, 2019 9.7 %, 2025 11.3 %]
+          n   pct
+anio             
+2014  25378  13.8
+2015  26325  12.7
+2016  27083  13.7
+2017  27043  12.5
+2018  26157  11.5
+2019  26691   9.7
+2022  29018   9.8
+2023  30454  10.8
+2024  37489  11.3
+2025  38430  11.3
+
+Medias según crédito (muestra):
+credito               0.0     1.0
+mujer               0.283   0.205
+edad               54.845  50.444
+educ                1.387   1.706
+lengua_originaria   0.413   0.283
+tam_hogar           3.125   3.609
+parcelas            2.324   2.341
+riego               0.512   0.646
+titulo              0.189   0.297
+pecuaria            0.745   0.715
+semilla             0.078   0.247
+fertiliz            0.438   0.683
+capacita            0.093   0.218
+asist               0.051   0.149
+asoc                0.059   0.164
+region              2.013   1.839
+
+% faltantes en la base consolidada:
+anio                  0.0
+departamento          0.0
+conglomerado          0.0
+peso                  0.0
+credito               0.0
+mujer                 0.0
+edad                  0.0
+educ                  0.0
+lengua_originaria     0.0
+tam_hogar             0.0
+parcelas              1.2
+riego                 0.0
+titulo                0.0
+pecuaria              0.0
+semilla               0.0
+fertiliz              0.0
+capacita              0.0
+asist                 0.0
+asoc                  0.0
+region                0.0
+solicito              0.0
+obtuvo               87.3
+titulo_cualquiera     0.0

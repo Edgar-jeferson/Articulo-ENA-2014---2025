@@ -1,0 +1,607 @@
+---
+lang: es
+crossref:
+  fig-title: "Fig."
+  tbl-title: "Tabla"
+  fig-prefix: "Fig."
+  tbl-prefix: "Tabla"
+  title-delim: "."
+  tbl-labels: roman
+format:
+  typst:
+    papersize: us-letter
+    fontsize: 10pt
+    mainfont: "TeX Gyre Termes"
+    margin:
+      top: 0.75in
+      bottom: 1in
+      x: 0.625in
+    fig-format: png
+  docx:
+    fig-format: png
+    reference-doc: ../Articulo_ENA_credito_IEEE.docx
+execute:
+  echo: false
+  warning: false
+  message: false
+fig-dpi: 300
+knitr:
+  opts_chunk:
+    dev: "ragg_png"
+---
+
+```{=typst}
+#set page(columns: 2, numbering: "1", header: none)
+#set columns(gutter: 0.25in)
+#set par(justify: true, leading: 0.52em, spacing: 0.6em, first-line-indent: (amount: 1em, all: false))
+#set text(size: 10pt, hyphenate: true)
+#set heading(numbering: (..n) => {
+  let n = n.pos()
+  if n.len() == 1 { numbering("I.", n.at(0)) } else { numbering("A.", n.at(1)) }
+})
+#show heading.where(level: 1): it => block(above: 1.1em, below: 0.65em, width: 100%)[
+  #set align(center)
+  #set text(size: 10pt, weight: "regular")
+  #smallcaps[#if it.numbering != none [#counter(heading).display(it.numbering) #h(0.25em)]#it.body]
+]
+#show heading.where(level: 2): it => block(above: 0.9em, below: 0.55em)[
+  #set text(size: 10pt, weight: "regular", style: "italic")
+  #if it.numbering != none [#counter(heading).display(it.numbering) #h(0.25em)]#it.body
+]
+#show table: set text(size: 7.6pt)
+#set table(inset: (x: 3.5pt, y: 2.2pt))
+#show figure.caption: set text(size: 8pt)
+#set figure.caption(separator: [. ])
+#show figure.where(kind: "quarto-float-tbl"): set figure(numbering: "I")
+#show figure.where(kind: "quarto-float-tbl"): set figure.caption(position: top)
+#show figure.caption.where(kind: "quarto-float-tbl"): it => align(center)[
+  #smallcaps[#it.supplement #context it.counter.display(it.numbering)] \
+  #smallcaps(it.body)
+]
+#show figure: set block(spacing: 0.9em)
+#show math.equation: set text(size: 9.5pt)
+
+#place(top + center, scope: "parent", float: true, clearance: 1.6em)[
+  #set par(justify: false, first-line-indent: 0pt)
+  #text(size: 22pt, hyphenate: false)[Determinantes del acceso al crédito agropecuario en el Perú mediante regresión logística y aprendizaje automático con la Encuesta Nacional Agropecuaria 2014–2025]
+  #v(1.1em)
+  #set text(size: 10pt, hyphenate: false)
+  #grid(columns: (1fr, 1fr, 1fr, 1fr), gutter: 6pt,
+    [Edgar Jeferson \ Cusihuaman Garate], [Nestor Ademir \ Ruelas Yana], [Keny Leonel \ Ccora Quispe], [Yhonel \ Mamani Crúz])
+  #v(0.5em)
+  #text(size: 9pt)[#emph[Facultad de Ingeniería Estadística e Informática, Universidad Nacional del Altiplano], Puno, Perú]
+]
+```
+
+::: {.content-visible when-format="docx"}
+TITULO_IEEE
+:::
+
+```{r}
+#| label: setup
+source("graficos.R")
+r <- readRDS("resultados_articulo.rds")
+
+pc <- function(x, d = 1) f2(100 * x, d)
+o  <- function(t, tab = r$or, d = 2) f2(tab$or[tab$term == t], d)
+oci <- function(t, tab = r$or, d = 2) {
+  x <- tab[tab$term == t, ]
+  paste0("OR = ", f2(x$or, d), "; IC 95 %: ", f2(x$lo, d), "–", f2(x$hi, d))
+}
+cambio <- function(t) { x <- r$or$or[r$or$term == t]; f2(abs(x - 1) * 100, 0) }
+lrv <- function(v) f2(r$lr$lr[r$lr$variable == v], 1)
+pw <- function(t) f2(r$or_w$p[r$or_w$term == t], 3)
+anio_pct <- function(a) f2(r$por_anio$pct[r$por_anio$anio == a], 1)
+rp <- setNames(r$region_pct$p, r$region_pct$region)
+dsc <- function(v, g) f2(r$desc[[v]][r$desc$credito == g], 1)
+prp <- function(g, n) f2(100 * r$pr$p[r$pr$grupo == g & r$pr$nivel == n], 1)
+mismo <- function(tab) {
+  x <- inner_join(r$or, tab, by = "term", suffix = c("", "_b")) |> filter(term != "(Intercept)")
+  sum(sign(log(x$or)) == sign(log(x$or_b)))
+}
+n_terms <- sum(r$or$term != "(Intercept)")
+sig_w <- sum(r$or_w$p[r$or_w$term != "(Intercept)"] < 0.05)
+cal_max <- max(abs(r$cal$pred - r$cal$obs)) * 100
+cvd <- r$cv$auc_dep |> mutate(nombre = dep_nom[departamento]) |> filter(n >= 1000)
+cv_min <- cvd |> slice_min(auc, n = 1); cv_max <- cvd |> slice_max(auc, n = 1)
+aj <- r$ajuste
+n_excl <- r$n_total - r$n
+theme_set(tema_articulo())
+
+# ---- comparación de modelos (04_comparacion_modelos.R) y heterogeneidad (05_heterogeneidad.R)
+rc <- readRDS("resultados_comparacion.rds")
+rh <- readRDS("resultados_heterogeneidad.rds")
+esq_al <- "Aleatoria 10 particiones"; esq_bl <- "Bloqueada por departamento"
+cm <- function(mod, esq = esq_bl, col = "auc", d = 3) f2(rc$comp[[col]][rc$comp$modelo == mod & rc$comp$esquema == esq], d)
+dif_xgb <- rc$comp$auc[rc$comp$modelo == "XGBoost" & rc$comp$esquema == esq_bl] -
+  rc$comp$auc[rc$comp$modelo == "Logit" & rc$comp$esquema == esq_bl]
+icc <- rc$multinivel$icc_dep_cong
+am <- function(t, d = 1) { x <- rh$ame[rh$ame$term == t, ]; f2(x$ame, d) }
+amci <- function(t) { x <- rh$ame[rh$ame$term == t, ]
+  paste0(f2(x$ame, 1), " puntos; IC 95 %: ", f2(x$lo, 1), " a ", f2(x$hi, 1)) }
+hd <- function(t, col) rh$het_dep[[col]][rh$het_dep$term == t]
+pdp <- function(dp, t) { x <- rh$por_dep[rh$por_dep$dep == dp & rh$por_dep$term == t, ]; f2(x$or, 2) }
+pdp_pct <- function(dp) f2(rh$por_dep$pct_credito[rh$por_dep$dep == dp][1], 1)
+iv <- function(v, col = "chi2", d = 1) f2(rh$int_var[[col]][rh$int_var$variable == v], d)
+
+# ---- mejoras metodológicas (06_mejoras_metodologicas.R)
+rm6 <- readRDS("resultados_mejoras.rds")
+de <- rm6$desc_etapas
+oe <- function(t, mod, d = 2) f2(rm6$etapas$or[rm6$etapas$term == t & rm6$etapas$modelo == mod], d)
+ae <- function(t, mod, d = 1) f2(rm6$ame_etapas$ame[rm6$ame_etapas$term == t & rm6$ame_etapas$modelo == mod], d)
+rr <- function(reg, t, col = "or_mediana", d = 2) f2(rm6$resumen_region[[col]][rm6$resumen_region$region_pred == reg & rm6$resumen_region$term == t], d)
+rs <- function(reg, t) rm6$resumen_region$sig[rm6$resumen_region$region_pred == reg & rm6$resumen_region$term == t]
+rn <- function(reg) rm6$resumen_region$n_dep[rm6$resumen_region$region_pred == reg][1]
+# coincidencia de las seis variables más importantes en el logit (RV) y en XGBoost (SHAP)
+top_lr <- rc$imp$variable[rc$imp$rank_lr <= 6]; top_shap <- rc$imp$variable[rc$imp$rank_shap <= 6]
+nom_var <- c(fertiliz = "los fertilizantes", semilla = "la semilla certificada", region = "la región",
+             asoc = "la asociación", edad = "la edad", educ = "la educación", tam_hogar = "el tamaño del hogar",
+             titulo = "el título", capacita = "la capacitación")
+lista <- function(x) { x <- nom_var[x]; paste0(paste(head(x, -1), collapse = ", "), " y ", tail(x, 1)) }
+# robustez: qué coeficientes dejan de ser significativos con el diseño muestral
+no_sig_w <- r$or_w |> filter(term != "(Intercept)", p >= 0.05)
+sierra_rng <- range(c(r$or$or[r$or$term == "regionSierra"], r$or_1419$or[r$or_1419$term == "regionSierra"],
+                      r$or_2225$or[r$or_2225$term == "regionSierra"], r$or_25$or[r$or_25$term == "regionSierra"],
+                      r$or_w$or[r$or_w$term == "regionSierra"]))
+or_ml <- function(t) f2(rc$multinivel$or$or_multinivel[rc$multinivel$or$term == t], 2)
+```
+
+**Resumen**—La disponibilidad de crédito permite a los pequeños agricultores comprar insumos e invertir, pero en el Perú pocos productores acceden a él. En este estudio se identificaron los factores asociados al acceso a crédito agropecuario entre 2014 y 2025, con un diseño cuantitativo, explicativo y transversal, a partir de los microdatos de la Encuesta Nacional Agropecuaria (ENA) del INEI. De `r fn(r$n_total)` pequeños y medianos productores se analizaron los `r fn(r$n)` con datos completos. Se estimó una regresión logística binaria y se comparó con probit, log-log complementario, LASSO, Random Forest y XGBoost mediante validación cruzada aleatoria y por departamento. Solo un `r pc(r$prev)` % accedió a crédito, sobre todo porque pocos lo solicitan (`r f2(de$pct_sol, 1)` %), ya que el `r f2(de$pct_obt, 1)` % de los solicitantes lo obtuvo. Pertenecer a una asociación (OR = `r o("asocSí")`; +`r am("asocSí")` puntos porcentuales de probabilidad), usar semilla certificada (OR = `r o("semillaSí")`) o fertilizantes (OR = `r o("fertilizSí")`) y tener educación superior (OR = `r o("educSuperior")`) se asociaron con mayor acceso, y vivir en la sierra lo redujo en `r gsub("-", "", am("regionSierra"))` puntos frente a la costa (OR = `r o("regionSierra")`). La regresión logística alcanzó un AUC de `r cm("Logit")` al predecir departamentos excluidos, y XGBoost apenas lo superó (`r cm("XGBoost")`), con la misma dirección en todos los efectos y una importancia de variables parecida. Los efectos cambian entre los 24 departamentos; en los de sierra pesan más la educación superior (OR mediano = `r rr("Sierra", "educSuperior")`) y la asociación (`r rr("Sierra", "asocSí")`), y en los de costa la semilla certificada (`r rr("Costa", "semillaSí")`). Los resultados sugieren estimular la demanda de crédito con políticas diferenciadas por región.
+
+**Palabras clave**—crédito agropecuario, inclusión financiera, regresión logística, aprendizaje automático, XGBoost, heterogeneidad territorial, Encuesta Nacional Agropecuaria, Perú.
+
+# Introducción
+
+Los créditos permiten contar con recursos para el inicio de actividades (semillas y fertilizantes antes de la cosecha), pago de jornales en campañas o bienes (riego o ganado). Sin embargo, cuando el prestamista no puede observar el riesgo del proyecto ni el esfuerzo del prestatario, la tasa de interés deja de equilibrar el mercado. Surge entonces el fenómeno de racionamiento de crédito. Algunos aspirantes no podrán acceder a crédito aunque estén dispuestos a pagar más [1]. El problema se agrava en el sector agrícola debido a su alto riesgo (climático) y falta de garantías. Además, parte de los productores ni siquiera solicitan crédito por miedo a perder su garantía. Es lo que Boucher, Carter y Guirkinger denominaron racionamiento por riesgo [2]. Los indicadores de inclusión financiera suelen incluir el acceso a financiamiento, y así lo miden encuestas de demanda como Global Findex [3].
+
+En el Perú hay evidencia en ese sentido. En una zona del norte del país se encontró que las restricciones de crédito reducían en 26% el valor de la producción agrícola [4]. A fines de los noventa, Trivelli y Venero documentaron en campo la presencia de prestamistas formales e informales y también de racionamiento y autorracionamiento [5]. Con el IV Censo Nacional Agropecuario de 2012 se encontró que son muy pocos los agricultores que solicitan crédito formal, principalmente porque la demanda es baja. La variable que más afecta la decisión de solicitar crédito es la asistencia técnica [6]. Con la misma fuente, Pintado y Sampi analizaron los determinantes del acceso y autorracionamiento de crédito [7].
+
+En la literatura también se han analizado los tres tipos de factores presentes en este estudio. Respecto a la propiedad, en la evaluación del Programa Especial de Titulación de Tierras (PETT) no se encontraron efectos promedio en crédito en el periodo 2004–2006. No obstante, se encontraron impactos en ingresos e inversión en el caso de los productores con restricción de cantidad [8]. En cuanto a organización, en Fujian (China) se encontró que el capital social que los agricultores reciben de su cooperativa está relacionado con su acceso a crédito bancario [9]. Y respecto al género, Fletschner y Kenney afirman que las mujeres rurales requieren de acceso directo a los servicios financieros (no a través de sus esposos) [10].
+
+En los estudios recientes que utilizan la ENA se trabaja con uno o pocos años. Ramos-Sandoval y Mendiburu analizaron la ENA 2015–2019 y encontraron que el tamaño de finca es un factor central en el acceso [11]. Claverías y Cárdenas combinan la ENA 2019 con el censo para tres regiones. Encuentran que los factores que incrementan la probabilidad de solicitar crédito son educación, productividad del predio y acceso a internet. Por otro lado, la distancia a la capital distrital disminuye esta probabilidad [12]. Vilca Apaza, Torres Cruz y Carpio Vargas (con la ENA 2017) muestran que los datos de la ENA tienen autocorrelación espacial. También encuentran que el desempeño predictivo de los modelos se sobreestima en validación cruzada aleatoria versus validación por bloques geográficos [13].
+
+Desde el punto de vista metodológico, es común utilizar regresión logística binaria cuando se trabaja con una variable respuesta dicotómica. Permite trabajar con diferentes tipos de variables (demográficas, productivas, territoriales) de forma simultánea. Además, se pueden reportar los resultados en términos de razón de odds. En el tema de acceso al crédito también se ha utilizado, por ejemplo en productores de arroz y maíz en Ruanda, donde los factores institucionales fueron más importantes que los individuales [14]. También se ha usado en el análisis de inclusión financiera de pequeños productores en Zimbabue [15]. Para elegir las variables de un logit multivariable, Bursac et al. mostraron mediante simulaciones que los procedimientos basados en pruebas de razón de verosimilitudes, como la selección hacia atrás, retienen las variables relevantes con buena precisión cuando la muestra es grande [16], un esquema que también se sigue en este trabajo.
+
+En los últimos años los métodos de aprendizaje automático, como Random Forest [33] y XGBoost [34], se usan cada vez más para clasificar solicitantes de crédito [31]. En agricultores de Lam Dong (Vietnam), Dang et al. compararon un logit multinomial con Random Forest para explicar la demanda de crédito y no encontraron diferencias relevantes de desempeño, por lo que prefirieron el logit para explicar los determinantes [29]. Una revisión sistemática de 71 estudios tampoco encontró ventajas del aprendizaje automático sobre la regresión logística con datos tabulares [30]. Además, cuando el objetivo es explicar y no solo predecir, se recomienda preferir modelos interpretables y comprobar que no pierden demasiada precisión [32].
+
+No se encontró ningún trabajo que combine la serie de la ENA (hasta 2025) con años previos y posteriores a la pandemia. Tampoco se encontró algún trabajo que analice el poder predictivo del modelo en territorios que no participaron en su estimación, que lo compare con modelos de aprendizaje automático o que examine si los factores asociados al crédito cambian entre departamentos. El objetivo de este estudio es identificar y cuantificar los factores asociados a la obtención de crédito de los productores agropecuarios peruanos en el periodo 2014–2025. Para ello se utiliza un modelo logit multivariable con los microdatos de la ENA, se separa la decisión de solicitar crédito de su aprobación, se compara el desempeño del logit con cinco modelos alternativos y se analiza cómo varían sus efectos entre regiones y departamentos.
+
+# Materiales y métodos
+
+## Diseño del estudio
+
+Se trata de un estudio cuantitativo, explicativo y de diseño observacional transversal. La ENA no sigue a los mismos productores de un año a otro, sino que cada año entrevista a productores distintos. Por eso los datos son secciones cruzadas repetidas y no un panel. El crédito y sus posibles determinantes se miden en la misma encuesta, así que el diseño permite estimar asociaciones pero no efectos causales.
+
+## Población, fuente de datos y muestra
+
+La población son los productores agropecuarios del Perú entrevistados por la ENA, cuyos microdatos publica el INEI [17]. Se usaron los años 2014–2019 y 2022–2025. En 2020 no hubo encuesta, y en 2021 las dos preguntas del cuestionario sobre crédito, "¿solicitó algún crédito en los últimos 12 meses?" y "¿obtuvo el crédito que solicitó?", están vacías en la base publicada, por lo que ese año quedó fuera. A partir de 2023 el muestreo dejó de hacerse por conglomerados y pasó a segmentos de área del Marco Maestro Muestral.
+
+La base unida de 2014–2024 tenía 3 843 598 filas y 1 679 variables. Hay tantas filas porque cada módulo del cuestionario repite al productor varias veces. Los ocho módulos de 2025 (1893, 1894, 1895, 1899, 1907, 1908, 1909 y 1911) venían en 15 archivos con 1 849 052 filas, y se unieron usando como claves la ubicación, el conglomerado o segmento, la unidad agropecuaria y el productor. Luego se dejó una fila por productor y año y se igualaron los códigos que cambian entre años. Se conservaron solo los productores que respondieron el módulo de crédito y se excluyó a los grandes productores (empresas agropecuarias), porque la ENA no registra para ellos las características del productor ni de su hogar. Con eso la base consolidada quedó en `r fn(r$n_total)` pequeños y medianos productores (@tbl-flujo). Para el modelo se usaron solo los registros con las 17 variables completas. Se perdieron `r fn(n_excl)` (`r pc(n_excl / r$n_total)` %), casi todos productores pecuarios sin parcelas registradas, y quedaron `r fn(r$n)`. La base consolidada, la muestra del modelo y los scripts que las construyen a partir de los microdatos del INEI están disponibles en un repositorio público [28].
+
+```{r}
+#| label: tbl-flujo
+#| tbl-cap: "Registros en cada etapa del procesamiento"
+tabla_flujo(r) |> knitr::kable(align = c("l", "r"))
+```
+
+## Variables
+
+La variable dependiente es si el productor obtuvo crédito en los últimos 12 meses. Se construyó con dos preguntas del cuestionario de la ENA. La primera pregunta si el productor solicitó algún crédito en los últimos 12 meses (código P901 en la base del INEI), y la segunda, dirigida solo a quienes solicitaron, si obtuvo el crédito que pidió (código P902). La variable vale 1 si el productor solicitó y obtuvo el crédito, y 0 en los demás casos, es decir, si no lo solicitó o si lo solicitó y no lo obtuvo. La @tbl-vars resume cómo se definió cada variable a partir de las preguntas del cuestionario. En el título de propiedad se consideró solo el título inscrito en registros públicos, porque es el que puede servir como garantía ante una entidad financiera. Se usaron 16 variables independientes. Cinco describen al productor (sexo, edad, nivel educativo, lengua materna originaria y tamaño del hogar) y cuatro a su unidad agropecuaria (número de parcelas, riego, título de propiedad y actividad pecuaria). Dos se refieren al uso de insumos (semilla certificada y fertilizantes) y tres a servicios y organización (capacitación, asistencia técnica y pertenencia a una asociación). Se completan con la región natural y el año de la encuesta (@tbl-desc). Las variables categóricas se incluyeron como indicadoras; las categorías de referencia fueron hombre, sin nivel educativo o inicial, y costa. La edad, el tamaño del hogar y el número de parcelas entraron como variables continuas, y el año como años transcurridos desde 2014. No se incluyó la superficie de la unidad agropecuaria porque estaba vacía en casi todos los años.
+
+```{r}
+#| label: tbl-vars
+#| tbl-cap: "Definición de las variables a partir del cuestionario de la ENA"
+#| tbl-colwidths: [24, 58, 18]
+tibble::tribble(
+  ~Variable, ~`Definición (pregunta del cuestionario)`, ~`Código`,
+  "Crédito", "1 si en los últimos 12 meses solicitó un crédito y lo obtuvo; 0 si no lo solicitó o no lo obtuvo", "P901, P902",
+  "Mujer", "1 si el productor es mujer", "P1103",
+  "Edad", "Edad del productor en años cumplidos", "P1104",
+  "Nivel educativo", "Nivel más alto alcanzado: sin nivel o inicial, primaria, secundaria o superior", "P1105",
+  "Lengua originaria", "1 si aprendió a hablar en quechua, aimara u otra lengua nativa", "P1106",
+  "Tamaño del hogar", "Número de miembros del hogar del productor", "P1100",
+  "Parcelas", "Número de parcelas o chacras que trabajó en los últimos 12 meses", "P103",
+  "Riego", "1 si al menos un cultivo se riega con agua distinta de la lluvia (río, manantial, pozo o reservorio)", "P212, P119",
+  "Título", "1 si al menos una parcela tiene título de propiedad inscrito en registros públicos", "P111, P112",
+  "Pecuaria", "1 si realizó actividad pecuaria o crió animales en los últimos 12 meses", "P102, P401",
+  "Semilla certificada", "1 si usó semilla certificada en al menos un cultivo", "P214, P122",
+  "Fertilizantes", "1 si utilizó fertilizantes en los últimos 12 meses", "P238",
+  "Capacitación", "1 si recibió capacitación agropecuaria en los últimos 3 años", "P701",
+  "Asistencia técnica", "1 si recibió asistencia técnica (mínimo 4 horas) en los últimos 3 años", "P704",
+  "Asociación", "1 si pertenece a una asociación, cooperativa o comité de productores", "P801",
+  "Región natural", "Costa, sierra o selva, según la ubicación de la unidad agropecuaria", "REGION",
+  "Año", "Año de la encuesta, expresado como años transcurridos desde 2014", "ANIO") |>
+  knitr::kable(align = c("l", "l", "l"))
+```
+
+```{r}
+#| label: tbl-desc
+#| tbl-cap: "Características de los productores según acceso a crédito (%)"
+tabla_desc(r) |> knitr::kable(align = c("l", "r", "r"))
+```
+
+## Modelo de regresión logística
+
+La regresión logística modela la probabilidad $p_i$ de que el productor $i$ haya obtenido crédito en función de las variables independientes $X_{1}, \dots, X_{19}$. Son 19 parámetros y no 16 porque la educación y la región tienen más de dos categorías:
+
+$$\ln\left(\frac{p_i}{1-p_i}\right) = \beta_0 + \sum_{k=1}^{19} \beta_k X_{ik}.$$ {#eq-logit}
+
+Los parámetros se estimaron por máxima verosimilitud. El exponencial de cada coeficiente es la razón de odds (OR). Si el OR es mayor que 1, las odds de obtener crédito aumentan; si es menor que 1, disminuyen, siempre con las demás variables constantes. En la muestra hay `r fn(r$eventos)` productores con crédito, lo que da unos `r fn(round(r$epv))` eventos por parámetro. El mínimo recomendado es 10; por debajo de ese valor las estimaciones logísticas pierden precisión y se sesgan [18].
+
+Se eligió la regresión logística como modelo principal por tres razones. La primera es que el objetivo del estudio es explicar qué factores se asocian con el crédito, no solo predecir quién lo obtiene, y el logit entrega para cada factor un efecto con su intervalo de confianza y su prueba de significancia. Los modelos de aprendizaje automático no ofrecen esa inferencia de forma directa [32]. La segunda es que con datos tabulares y variables mayormente binarias el aprendizaje automático suele mejorar poco la discriminación [29], [30]. La tercera es que sus resultados se pueden comunicar a quienes diseñan políticas en términos de odds y de probabilidades. Para comprobar que esta elección no sacrifica capacidad predictiva, el logit se comparó con otros cinco modelos (sección F).
+
+## Selección y evaluación del modelo
+
+Se buscó un modelo parsimonioso mediante selección hacia atrás con la prueba de razón de verosimilitudes (RV) [19]. Se empezó con el modelo completo y en cada paso se comparó el modelo con y sin cada variable. Una variable se eliminaba si su prueba RV no era significativa al 5 %. Cada coeficiente se evaluó con la prueba de Wald (α = 0.05, bilateral) y el modelo en conjunto con la prueba RV frente al modelo nulo.
+
+Para el ajuste se usaron el R² de Nagelkerke [20] y el de McFadden. Según McFadden, valores de 0.2 a 0.4 indican un ajuste excelente [21]. También se aplicó la prueba de Hosmer y Lemeshow por deciles [19] y se comparó en cada decil la probabilidad predicha con la observada. La discriminación se midió con el área bajo la curva ROC (AUC) y su intervalo de DeLong. Como pocos productores tienen crédito, para clasificar se usó un punto de corte de 0.15 y no de 0.5. La colinealidad se revisó con el factor de inflación de la varianza (VIF).
+
+Todos estos indicadores se calculan con los mismos datos que se usaron para estimar el modelo. Por eso, y siguiendo la recomendación de validar por bloques geográficos cuando se trabaja con la ENA [13], se comparó una validación cruzada aleatoria de 10 particiones con una validación bloqueada por departamento. En la bloqueada se deja fuera un departamento, se estima el modelo con los otros `r r$cv$n_dep - 1` y se evalúa en el que quedó fuera. En los dos casos se calculó el AUC y el puntaje de Brier con las predicciones fuera de muestra. Se estimó además un modelo reducido con las seis variables que más aportaron en la prueba RV, y se comparó con el completo mediante AIC, BIC y una prueba RV, como en [16]. Para expresar los efectos en probabilidades se calculó la probabilidad media predicha suponiendo que todos los productores tuvieran el mismo valor en una variable y conservaran sus demás características.
+
+## Comparación con otros modelos
+
+El logit se comparó con dos modelos lineales generalizados con otra función de enlace, el probit y el log-log complementario (este último es adecuado cuando el evento es poco frecuente), con un logit penalizado LASSO [36], [37] y con dos modelos de aprendizaje automático basados en árboles, Random Forest [33], [38] y XGBoost [34]. Todos usaron las mismas 16 variables. Los hiperparámetros de LASSO (penalización) y de XGBoost (profundidad de los árboles, tamaño mínimo de los nodos y número de iteraciones) se eligieron con una validación cruzada agrupada por departamento, para no premiar modelos que solo funcionan en los departamentos conocidos [42]. Random Forest se estimó con `r rm6$rf_param["num.trees"]` árboles y un tamaño mínimo de nodo de `r rm6$rf_param["min.node.size"]`, sin ajuste adicional. Como los hiperparámetros se eligieron con los mismos datos que luego se usaron para validar, el desempeño de XGBoost puede estar ligeramente sobreestimado; esto favorece al modelo de comparación y no al logit, por lo que hace más exigente la comparación. Los seis modelos se evaluaron con las mismas dos validaciones del logit (aleatoria de 10 particiones y bloqueada por departamento) mediante el AUC, el puntaje de Brier [44] y la pendiente de calibración [43]. El AUC de cada modelo se comparó con el del logit con la prueba de DeLong para curvas ROC correlacionadas [41]. Para ver si los modelos de árboles identifican los mismos factores que el logit, se calcularon los valores SHAP de XGBoost [35] y se compararon con el aporte de cada variable en la prueba RV.
+
+## Solicitud y aprobación del crédito
+
+Un productor sin crédito puede estar en esa situación porque no lo pidió o porque lo pidió y se lo negaron. La teoría distingue ambos casos como autorracionamiento y racionamiento por parte del prestamista [1], [2]. Para separarlos se estimaron dos modelos logit adicionales con las mismas variables. El primero explica si el productor solicitó crédito, con todos los productores. El segundo explica si lo obtuvo, solo entre quienes lo solicitaron. El primero refleja la demanda de crédito y el segundo la decisión del prestamista.
+
+## Efectos marginales y heterogeneidad territorial
+
+La razón de odds no indica cuánto cambia la probabilidad de obtener crédito, y su valor no se puede comparar entre grupos o modelos con distinta variación no explicada [45]. Por eso se calcularon efectos marginales promedio, que son el cambio medio en la probabilidad predicha, en puntos porcentuales, cuando una variable pasa de 0 a 1 (o aumenta en una unidad) y las demás se mantienen como están. Sus intervalos de confianza se obtuvieron con 300 simulaciones de los coeficientes. También se probó si el efecto de la edad es no lineal, comparando la edad lineal con un spline natural de cuatro grados de libertad.
+
+Para ver si los factores asociados al crédito son los mismos en todo el país se hicieron tres análisis. Primero, se estimó el modelo por separado en la costa, la sierra y la selva, y se probó con razón de verosimilitudes si la interacción entre la región y cada variable mejoraba el ajuste. Segundo, se estimó un logit en cada uno de los 24 departamentos (excepto Callao, con muy pocos productores) y se midió con el estadístico I² qué parte de la variación de los OR entre departamentos no se explica por el azar. Para resumirlos, cada departamento se clasificó en la región natural donde vive la mayoría de sus productores. Tercero, se estimó un logit multinivel [39] con interceptos aleatorios por departamento y por conglomerado, del que se obtuvo el coeficiente de correlación intraclase (ICC) [40], y otro con pendientes aleatorias por departamento para la asociación, el título y la semilla certificada.
+
+## Análisis de sensibilidad
+
+En el modelo principal todos los productores pesan lo mismo. Por ello se estimó también con el factor de expansión y con el conglomerado (combinado con el año) como unidad primaria de muestreo, usando `svyglm()` del paquete survey [22] con familia cuasibinomial. No se incluyeron estratos porque la base no los trae. Además se estimó el modelo por separado para 2014–2019 y 2022–2025, para comparar antes y después de la pandemia, y solo para 2025, en este caso sin el término de año. Por último, como el acceso no sigue una tendencia lineal en el tiempo y la edad tampoco tiene un efecto lineal, se estimó un modelo con un efecto propio para cada año (efectos fijos de año) y con la edad como spline natural, y se compararon sus OR con los del modelo base. También se probó la definición de título que incluye los títulos no inscritos.
+
+## Software y reproducibilidad
+
+Los módulos se unieron originalmente en SPSS. Para que este paso sea reproducible, la unión se replicó con scripts en Python (pyreadstat) que leen los archivos originales del INEI y reproducen la base consolidada con una diferencia menor a 0.1 % en el número de productores. A partir de la base consolidada, todo el análisis se hizo en R `r r$versiones["R"]` [23]. Con tidyverse `r r$versiones["tidyverse"]` [24] se importaron los datos (`readr`), se recodificaron y resumieron (`dplyr`), se quitaron los casos incompletos (`tidyr`) y se hicieron las figuras (`ggplot2`). Del ecosistema easystats se usó parameters `r r$versiones["parameters"]` [25] para los coeficientes, las razones de odds y sus intervalos, y performance `r r$versiones["performance"]` [26] para los R², la prueba de Hosmer y Lemeshow y el VIF. La curva ROC se obtuvo con pROC [27]. Los modelos de comparación se estimaron con glmnet `r rc$versiones["glmnet"]` [37], ranger `r rc$versiones["ranger"]` [38] y xgboost `r rc$versiones["xgboost"]` [34], y los modelos multinivel con lme4 `r rc$versiones["lme4"]` [39]. El script `01_analisis.R` estima los modelos y guarda los resultados; `04_comparacion_modelos.R` y `05_heterogeneidad.R` hacen la comparación de modelos y el análisis territorial. `02_figuras_tablas.R` exporta las figuras y tablas, `03_tablas_latex.R` genera las tablas en LaTeX y el documento se compila con Quarto a partir de esos mismos resultados. Los datos y el código están en el repositorio del estudio [28]. Allí se encuentran la base consolidada de 2014–2025 (`r fn(r$n_total)` productores y 20 variables), la muestra usada en la regresión logística (`r fn(r$n)` productores con datos completos) y los scripts que reproducen resultados, tablas y figuras.
+
+## Consideraciones éticas
+
+Se trabajó con microdatos secundarios y anonimizados que el INEI publica para uso público. No hubo contacto con los productores ni se tuvo acceso a datos que permitan identificarlos, por lo que no fue necesario el consentimiento informado.
+
+# Resultados y discusión
+
+## Características de los productores
+
+De los `r fn(r$n)` productores analizados, el `r pc(r$prev)` % obtuvo crédito. En 2014 el porcentaje era `r anio_pct(2014)` %, bajó a `r anio_pct(2019)` % en 2019 y desde 2022 volvió a subir, hasta `r anio_pct(2025)` % en 2025 (@fig-anio). Quienes tienen crédito son más jóvenes (`r dsc("edad", 1)` años frente a `r dsc("edad", 0)`) y tienen más educación. Entre ellos es mucho más frecuente tener título, recibir asistencia técnica, usar semilla certificada (`r dsc("semilla", 1)` % frente a `r dsc("semilla", 0)` %) y estar en una asociación (`r dsc("asoc", 1)` % frente a `r dsc("asoc", 0)` %) (@tbl-desc). En la costa obtuvo crédito el `r f2(rp["Costa"], 1)` % de los productores, en la sierra el `r f2(rp["Sierra"], 1)` % y en la selva el `r f2(rp["Selva"], 1)` %. Son diferencias brutas. El modelo multivariable sirve para ver cuáles se mantienen cuando se controlan las demás variables.
+
+```{r}
+#| label: fig-anio
+#| fig-cap: "Porcentaje de productores con crédito por año. No hay datos de 2020 (sin ENA) ni de 2021 (sin variable de crédito)."
+#| fig-width: 3.4
+#| fig-height: 1.9
+fig_anio(r)
+```
+
+## Modelo logit multivariable
+
+La selección hacia atrás no eliminó ninguna variable. Las 16 tuvieron un aporte significativo en la prueba RV, así que el modelo final es el completo (@tbl-lr). Las que más aportan al ajuste son los fertilizantes (χ² = `r lrv("fertiliz")`), la semilla certificada (χ² = `r lrv("semilla")`), la región natural (χ² = `r lrv("region")`), la asociación (χ² = `r lrv("asoc")`), la edad (χ² = `r lrv("edad")`) y el nivel educativo (χ² = `r lrv("educ")`). Las que menos aportan son la lengua materna originaria (χ² = `r lrv("lengua_originaria")`) y el año (χ² = `r lrv("anio_c")`). El modelo en conjunto es significativo (χ² = `r fn(round(r$chi2))`, `r r$gl` gl, p < 0.001).
+
+```{r}
+#| label: tbl-lr
+#| tbl-cap: "Prueba de razón de verosimilitudes al retirar cada variable del modelo completo"
+tabla_lr(r) |> knitr::kable(align = c("l", "r", "r", "r"))
+```
+
+Con las variables numeradas como en la @tbl-coef, el modelo estimado es
+
+```{r}
+#| label: ecuacion
+#| results: asis
+cat(ecuacion_modelo(r))
+```
+
+```{r}
+#| label: tbl-coef
+#| tbl-cap: "Coeficientes del modelo logit multivariable"
+#| tbl-colwidths: [23, 12, 10, 12, 10, 21, 12]
+tabla_coef(r) |> knitr::kable(align = c("l", rep("r", 6)))
+```
+
+Ser parte de una asociación aumenta en `r cambio("asocSí")` % las odds de obtener crédito (`r oci("asocSí")`). Usar semilla certificada las aumenta en `r cambio("semillaSí")` % (`r oci("semillaSí")`) y aplicar fertilizantes en `r cambio("fertilizSí")` % (`r oci("fertilizSí")`). Comparadas con las de quienes no tienen nivel educativo o solo inicial, las odds son `r o("educPrimaria")` veces mayores con primaria, `r o("educSecundaria")` con secundaria y `r o("educSuperior")` con educación superior. La capacitación sube las odds en `r cambio("capacitaSí")` %, la asistencia técnica en `r cambio("asistSí")` % y el título de propiedad en `r cambio("tituloSí")` %. El riego, la actividad pecuaria, el número de parcelas y el tamaño del hogar tienen efectos menores (@tbl-coef, @fig-forest).
+
+Vivir en la sierra reduce las odds en `r cambio("regionSierra")` % respecto a la costa (`r oci("regionSierra")`), y vivir en la selva en `r cambio("regionSelva")` %. Cada año de edad las reduce en promedio en `r cambio("edad")` % (OR = `r o("edad", d = 3)`), aunque, como se muestra más adelante, este efecto no es constante a lo largo de la vida. Las mujeres tienen odds `r cambio("mujerSí")` % menores que los hombres. La lengua materna originaria casi no cambia nada (OR = `r o("lengua_originariaSí")`) y la tendencia lineal por año es prácticamente nula (OR = `r o("anio_c", d = 3)`). Con casi 294 mil observaciones, incluso efectos pequeños salen significativos; por eso, al interpretar los resultados, nos fijamos en el tamaño de los OR más que en los valores p.
+
+```{r}
+#| label: fig-forest
+#| fig-cap: "Razones de odds con IC 95 % (escala logarítmica). La línea punteada marca OR = 1."
+#| fig-width: 3.4
+#| fig-height: 2.8
+fig_forest(r)
+```
+
+## Ajuste, discriminación y validación
+
+El R² de Nagelkerke fue `r f2(r$r2n, 3)`, el de McFadden `r f2(r$r2mf, 3)` y el de Tjur `r f2(r$r2t, 3)`. El de McFadden no llega al rango de 0.2 a 0.4 [21]. Esto indica que buena parte de la variación en el acceso depende de factores que la ENA no mide, como el historial crediticio, la superficie o la distancia a una entidad financiera. La discriminación es aceptable, con un AUC de `r f2(r$auc, 3)` (IC 95 %: `r f2(r$auc_ci[1], 3)`–`r f2(r$auc_ci[3], 3)`) (@fig-roc). La prueba de Hosmer y Lemeshow rechaza el ajuste perfecto (χ² = `r f2(r$hl$chisq, 1)`, 8 gl, p < 0.001). Con una muestra tan grande es lo esperable, porque la prueba detecta hasta desvíos mínimos. En ningún decil la probabilidad predicha y la observada se separaron más de `r f2(cal_max, 1)` puntos porcentuales. El VIF más alto fue `r f2(max(r$vif$VIF), 2)` (región), así que no hay problemas de colinealidad. Con el corte de 0.15 se obtuvo una sensibilidad de `r pc(r$sens)` %, una especificidad de `r pc(r$espec)` % y una exactitud de `r pc(r$exact)` %.
+
+```{r}
+#| label: fig-roc
+#| fig-cap: "Curva ROC (izquierda) y calibración por deciles de probabilidad predicha (derecha)."
+#| fig-width: 3.4
+#| fig-height: 1.75
+fig_roc_cal(r)
+```
+
+En la validación aleatoria el AUC fuera de muestra fue `r f2(r$cv$auc_al, 3)`, el mismo de la muestra completa, y varió poco entre particiones (`r f2(min(r$cv$auc_fold_al), 3)`–`r f2(max(r$cv$auc_fold_al), 3)`). Cuando se dejó fuera un departamento a la vez, el AUC bajó a `r f2(r$cv$auc_bl, 3)` y el puntaje de Brier subió de `r f2(r$cv$brier_al, 4)` a `r f2(r$cv$brier_bl, 4)`. Es una pérdida pequeña, lo que indica que el modelo funciona en departamentos que no se usaron para estimarlo. Dentro de cada departamento el desempeño sí cambia (@fig-cv). El AUC va de `r f2(cv_min$auc, 3)` en `r cv_min$nombre` a `r f2(cv_max$auc, 3)` en `r cv_max$nombre`, y en Puno es `r f2(cvd$auc[cvd$departamento == "21"], 3)`. Una heterogeneidad territorial parecida se observó al validar por dominios geográficos el inventario ganadero de la ENA 2017 [13]. Callao no aparece en la figura porque solo tiene `r r$cv$auc_dep$n[r$cv$auc_dep$departamento == "07"]` productores.
+
+```{r}
+#| label: fig-cv
+#| fig-cap: "AUC por departamento en la validación bloqueada (cada departamento se predice con un modelo estimado sin él). La línea negra discontinua es el AUC global bloqueado y la línea roja punteada el AUC de la validación aleatoria."
+#| fig-width: 3.4
+#| fig-height: 3.3
+fig_cv(r)
+```
+
+## Efectos marginales y probabilidades predichas
+
+Los OR muestran la dirección y la fuerza relativa de cada factor, pero no cuánto cambia la probabilidad de obtener crédito. Los efectos marginales promedio lo expresan en puntos porcentuales (@fig-ame). Pertenecer a una asociación aumenta la probabilidad de crédito en `r amci("asocSí")`, usar semilla certificada en `r am("semillaSí")` puntos y tener educación superior, frente a no tener nivel educativo, en `r am("educSuperior")` puntos. Como el acceso promedio es de `r pc(r$prev)` %, un aumento de 8 puntos equivale a casi duplicar la probabilidad. Los fertilizantes la suben en `r am("fertilizSí")` puntos, la capacitación en `r am("capacitaSí")`, la asistencia técnica en `r am("asistSí")` y el título de propiedad en `r am("tituloSí")`. Vivir en la sierra la reduce en `r gsub("-", "", am("regionSierra"))` puntos frente a la costa, diez años más de edad en `r gsub("-", "", am("edad (+10 años)"))` puntos y ser mujer en `r gsub("-", "", am("mujerSí"))` punto.
+
+```{r}
+#| label: fig-ame
+#| fig-cap: "Efectos marginales promedio con IC 95 %. Cambio en la probabilidad de obtener crédito, en puntos porcentuales."
+#| fig-width: 3.4
+#| fig-height: 3.0
+rh$ame |> mutate(et = coalesce(etq[term], if_else(term == "edad (+10 años)", "Edad (+10 años)", term)),
+                 et = fct_reorder(et, ame)) |>
+  ggplot(aes(ame, et, colour = ame > 0)) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = tinta, linewidth = 0.4) +
+  geom_pointrange(aes(xmin = lo, xmax = hi), size = 0.15, linewidth = 0.4) +
+  scale_colour_manual(values = c(`TRUE` = tinta, `FALSE` = acento), guide = "none") +
+  labs(x = "Puntos porcentuales", y = NULL)
+```
+
+La edad no tiene un efecto lineal. El modelo con un spline de edad ajusta mejor que el modelo con edad lineal (χ² = `r f2(rh$lr_edad$Deviance[2], 1)`, 3 gl, p < 0.001). La probabilidad de crédito sube hasta alrededor de los `r rm6$edad_max` años y luego baja (@fig-edad), por lo que el OR lineal de la edad debe leerse como un promedio. Los demás OR casi no cambian con el spline (véase Robustez).
+
+```{r}
+#| label: fig-edad
+#| fig-cap: "Probabilidad media predicha de crédito según la edad del productor (modelo con edad como spline natural y efectos fijos de año)."
+#| fig-width: 3.4
+#| fig-height: 1.8
+ggplot(rm6$curva_edad, aes(edad, p)) + geom_line(colour = tinta, linewidth = 0.5) +
+  geom_vline(xintercept = rm6$edad_max, linetype = "dashed", colour = acento, linewidth = 0.4) +
+  labs(x = "Edad del productor (años)", y = "Probabilidad (%)")
+```
+
+Si todos los productores pertenecieran a una asociación, la probabilidad media de crédito sería de `r prp("Asociación", "Sí")` %; si ninguno perteneciera, de `r prp("Asociación", "No")` %. Sin estudios o solo con inicial sería de `r prp("Educación", "Sin nivel/inicial")` %, y con educación superior de `r prp("Educación", "Superior")` %. La brecha entre regiones no desaparece al controlar las demás variables: `r prp("Región", "Costa")` % en la costa y `r prp("Región", "Sierra")` % en la sierra (@fig-prob).
+
+```{r}
+#| label: fig-prob
+#| fig-cap: "Probabilidad media predicha de crédito si todos los productores tuvieran cada valor de la variable."
+#| fig-width: 3.4
+#| fig-height: 1.9
+fig_prob(r)
+```
+
+## Modelo reducido
+
+El modelo reducido incluye fertilizantes, semilla certificada, región, asociación, edad y nivel educativo. Con esas seis variables alcanza un AUC de `r f2(aj$auc[2], 3)` y un R² de Nagelkerke de `r f2(aj$r2n[2], 3)`, cerca del modelo completo (@tbl-comp). Aun así, la prueba RV prefiere el modelo completo (χ² = `r fn(round(r$lr_red["chi2"]))`, `r r$lr_red["gl"]` gl, p < 0.001), que además tiene menor AIC y BIC. Las otras diez variables tienen efectos pequeños por separado, pero juntas mejoran el ajuste.
+
+```{r}
+#| label: tbl-comp
+#| tbl-cap: "Comparación del modelo completo y el modelo reducido"
+tabla_comparacion(r) |> knitr::kable(align = c("l", "r", "r"))
+```
+
+## Robustez
+
+```{r}
+#| label: tbl-rob
+#| tbl-cap: "Razones de odds en el análisis de sensibilidad"
+#| tbl-colwidths: [25, 15, 15, 15, 15, 15]
+tabla_robustez(r) |> knitr::kable(align = c("l", rep("r", 5)))
+```
+
+Al usar el factor de expansión y los conglomerados, los `r n_terms` coeficientes mantienen su signo y `r sig_w` siguen siendo significativos al 5 % (@tbl-rob; † indica p ≥ 0.05). `r if (nrow(no_sig_w) == 0) "Ninguno deja de serlo." else paste0(if (nrow(no_sig_w) == 1) "El único que deja de serlo es " else "Los que dejan de serlo son ", paste0(c(mujerSí = "el sexo", anio_c = "la tendencia anual", lengua_originariaSí = "la lengua originaria", pecuariaSí = "la actividad pecuaria", parcelasSí = "el número de parcelas")[no_sig_w$term] |> coalesce(tolower(etq[no_sig_w$term])), " (p = ", f2(no_sig_w$p, 3), ")", collapse = " y "), ".")` En la estimación por periodos coinciden en signo `r mismo(r$or_1419)` de `r n_terms` coeficientes en 2014–2019 y `r mismo(r$or_2225)` en 2022–2025; con solo 2025 coinciden `r mismo(r$or_25)` de `r n_terms - 1`. Los efectos más grandes casi no cambian. La asociación va de `r o("asocSí", r$or_1419)` a `r o("asocSí", r$or_25)`, la semilla certificada de `r o("semillaSí", r$or_1419)` a `r o("semillaSí", r$or_25)` y la sierra queda entre `r f2(sierra_rng[1], 2)` y `r f2(sierra_rng[2], 2)`. El que sí cambia es el año. Su OR es `r o("anio_c", r$or_1419, 3)` en 2014–2019 y `r o("anio_c", r$or_2225, 3)` en 2022–2025, es decir, el acceso cayó cada año hasta 2019 y subió desde 2022; al juntar los dos periodos, la tendencia del modelo base queda cerca de cero. En 2025 la diferencia por sexo es mayor (`r oci("mujerSí", r$or_25)`), el OR de la lengua originaria pasa a `r o("lengua_originariaSí", r$or_25)` y la actividad pecuaria y el número de parcelas dejan de ser significativos.
+
+Los resultados tampoco dependen de cómo se modelan el año y la edad. Con un efecto propio para cada año, ningún OR cambia más de `r f2(100 * max(rm6$dif_max$d_fe), 1)` %, y al añadir además la edad como spline el cambio máximo es de `r f2(100 * max(rm6$dif_max$d_ext), 1)` %. Los efectos de año confirman la forma de U del acceso: frente a 2014, las odds bajan hasta un OR de `r f2(min(rm6$efe_anio$or), 2)` en `r rm6$efe_anio$anio[which.min(rm6$efe_anio$or)]` y se recuperan a `r f2(rm6$efe_anio$or[rm6$efe_anio$anio == "2025"], 2)` en 2025. Si se cuentan también los títulos no inscritos, el OR del título baja de `r f2(rm6$titulo_sens$or[1], 2)` a `r f2(rm6$titulo_sens$or[2], 2)`.
+
+## Solicitud y aprobación del crédito
+
+El bajo acceso al crédito se explica sobre todo por la demanda. Solo el `r f2(de$pct_sol, 1)` % de los productores solicitó un crédito, pero el `r f2(de$pct_obt, 1)` % de quienes lo solicitaron lo obtuvo. La brecha entre regiones también está en la solicitud; en la sierra solicitó el `r f2(de$por_region$sol[de$por_region$region == "Sierra"], 1)` % frente al `r f2(de$por_region$sol[de$por_region$region == "Costa"], 1)` % en la costa, mientras que la aprobación fue alta en ambas (`r f2(de$por_region$obt[de$por_region$region == "Sierra"], 1)` % y `r f2(de$por_region$obt[de$por_region$region == "Costa"], 1)` %). En la selva la aprobación fue menor (`r f2(de$por_region$obt[de$por_region$region == "Selva"], 1)` %).
+
+```{r}
+#| label: tbl-etapas
+#| tbl-cap: "Razones de odds del acceso al crédito separado en solicitud y aprobación"
+#| tbl-colwidths: [34, 22, 22, 22]
+terminos <- c("asocSí", "educSuperior", "semillaSí", "fertilizSí", "capacitaSí", "asistSí", "tituloSí",
+              "mujerSí", "regionSierra", "regionSelva")
+rm6$etapas |> filter(term %in% terminos) |>
+  mutate(celda = paste0(f2(or, 2), if_else(p < 0.05, "", "†")), Variable = etq[term]) |>
+  select(Variable, modelo, celda, term) |> pivot_wider(names_from = modelo, values_from = celda) |>
+  arrange(match(term, terminos)) |>
+  transmute(Variable, `Obtuvo (todos)` = `Obtuvo crédito (todos)`, `Solicitó (todos)`,
+            `Obtuvo si solicitó` = `Obtuvo | solicitó`) |>
+  bind_rows(tibble(Variable = "n", `Obtuvo (todos)` = fn(de$n), `Solicitó (todos)` = fn(de$n),
+                   `Obtuvo si solicitó` = fn(de$n_sol))) |>
+  knitr::kable(align = c("l", "r", "r", "r"))
+```
+
+Los factores del modelo principal actúan sobre todo en la decisión de solicitar (@tbl-etapas). Los OR del modelo de solicitud son casi iguales a los del modelo principal; la asociación (OR = `r oe("asocSí", "Solicitó (todos)")`), la educación superior (`r oe("educSuperior", "Solicitó (todos)")`) y la capacitación (`r oe("capacitaSí", "Solicitó (todos)")`) aumentan la probabilidad de pedir un crédito. Una vez que el productor lo pide, esos mismos factores pesan mucho menos en la aprobación. La asociación tiene un efecto mucho menor en la aprobación (OR = `r oe("asocSí", "Obtuvo | solicitó")`) y la capacitación casi ninguno (`r oe("capacitaSí", "Obtuvo | solicitó")`). En cambio, en la aprobación conservan su peso los factores que el prestamista puede ver como garantía o capacidad de pago: el título inscrito (OR = `r oe("tituloSí", "Obtuvo | solicitó")`), la semilla certificada (`r oe("semillaSí", "Obtuvo | solicitó")`) y los fertilizantes (`r oe("fertilizSí", "Obtuvo | solicitó")`). Vivir en la selva reduce más la aprobación (OR = `r oe("regionSelva", "Obtuvo | solicitó")`) que la solicitud (`r oe("regionSelva", "Solicitó (todos)")`).
+
+## Comparación con otros modelos
+
+La @tbl-ml muestra el desempeño fuera de muestra de los seis modelos. El probit, el log-log complementario y el LASSO dieron prácticamente el mismo resultado que el logit. El LASSO no eliminó ninguna variable, lo que coincide con la selección hacia atrás. Los modelos de árboles discriminaron algo mejor. En la validación por departamento, XGBoost alcanzó un AUC de `r cm("XGBoost")` frente a `r cm("Logit")` del logit, una diferencia de `r f2(dif_xgb, 3)` (@fig-ml). Con casi 300 mil productores la diferencia es estadísticamente significativa (prueba de DeLong, p < 0.001), pero es pequeña en la práctica. El puntaje de Brier mejoró en apenas `r f2(as.numeric(cm("Logit", col = "brier", d = 4)) - as.numeric(cm("XGBoost", col = "brier", d = 4)), 4)` y la calibración de todos los modelos fue buena (pendiente entre `r f2(min(rc$comp$pend_calib[rc$comp$esquema == esq_bl]), 2)` y `r f2(max(rc$comp$pend_calib[rc$comp$esquema == esq_bl]), 2)`). Todos los modelos pierden un poco al predecir departamentos que no vieron, lo que confirma que la validación aleatoria es optimista con datos agrupados en el territorio [13], [42].
+
+```{r}
+#| label: tbl-ml
+#| tbl-cap: "Desempeño fuera de muestra de la regresión logística y los modelos alternativos"
+#| tbl-colwidths: [28, 18, 18, 18, 18]
+rc$comp |> select(esquema, modelo, auc, brier, pend_calib) |>
+  mutate(esquema = if_else(esquema == esq_al, "al", "bl")) |>
+  pivot_wider(names_from = esquema, values_from = c(auc, brier, pend_calib)) |>
+  transmute(Modelo = modelo, `AUC aleatoria` = f2(auc_al, 3), `AUC por depto.` = f2(auc_bl, 3),
+            `Brier por depto.` = f2(brier_bl, 4), `Calibración por depto.` = f2(pend_calib_bl, 2)) |>
+  knitr::kable(align = c("l", "r", "r", "r", "r"))
+```
+
+```{r}
+#| label: fig-ml
+#| fig-cap: "AUC fuera de muestra (IC 95 % de DeLong) de los seis modelos en las dos validaciones."
+#| fig-width: 3.4
+#| fig-height: 2.2
+rc$comp |> mutate(modelo = fct_reorder(modelo, auc),
+                  esquema = if_else(esquema == esq_al, "Aleatoria", "Por departamento")) |>
+  ggplot(aes(auc, modelo, colour = esquema)) +
+  geom_pointrange(aes(xmin = auc_lo, xmax = auc_hi), size = 0.15, linewidth = 0.4,
+                  position = position_dodge(width = 0.5)) +
+  scale_colour_manual(values = c(Aleatoria = acento, `Por departamento` = tinta)) +
+  labs(x = "AUC fuera de muestra", y = NULL, colour = NULL) + theme(legend.position = "bottom")
+```
+
+XGBoost no solo predice casi igual que el logit, sino que llega a las mismas conclusiones. El efecto de las `r nrow(rc$dir)` variables va en la misma dirección (`r sum(rc$dir$coincide)` de `r nrow(rc$dir)`) en el logit y según los valores SHAP de XGBoost, y el orden de importancia de las variables es parecido en ambos (correlación de Spearman = `r f2(rc$rho, 2)`). De las seis variables más importantes, `r length(intersect(top_lr, top_shap))` coinciden en los dos modelos: `r lista(intersect(top_lr, top_shap))`. La diferencia es que en XGBoost `r lista(setdiff(top_shap, top_lr))` sube entre las seis primeras y `r lista(setdiff(top_lr, top_shap))` baja al puesto `r rc$imp$rank_shap[rc$imp$variable == setdiff(top_lr, top_shap)[1]]`. La pequeña ganancia de XGBoost viene de interacciones y no linealidades, como las de la edad y la región que se analizan a continuación, y no de factores que el logit haya pasado por alto.
+
+## Heterogeneidad territorial
+
+Los factores asociados al crédito no pesan lo mismo en todo el país. Que los efectos de todas las variables sean iguales en la costa, la sierra y la selva se rechaza con fuerza (χ² = `r fn(round(rh$lr_global$Deviance[2]))`, `r rh$lr_global$Df[2]` gl, p < 0.001). Las interacciones más fuertes con la región son las del nivel educativo (χ² = `r iv("educ")`), el título de propiedad (χ² = `r iv("titulo")`) y la edad (χ² = `r iv("edad")`). En cambio, el efecto de la capacitación y de la actividad pecuaria es el mismo en las tres regiones.
+
+Entre departamentos la variación es aún mayor. La parte de la variación de los OR que no se explica por el azar (I²) es de `r f2(hd("fertilizSí", "I2"), 0)` % para los fertilizantes, `r f2(hd("semillaSí", "I2"), 0)` % para la semilla certificada, `r f2(hd("tituloSí", "I2"), 0)` % para el título y `r f2(hd("asocSí", "I2"), 0)` % para la asociación. La @fig-depto muestra los OR de los cinco factores principales en los 24 departamentos, agrupados según la región natural donde vive la mayoría de sus productores (`r rn("Costa")` de costa, `r rn("Sierra")` de sierra y `r rn("Selva")` de selva).
+
+```{r}
+#| label: fig-depto
+#| fig-cap: "Razones de odds de cinco factores estimadas dentro de cada departamento, agrupados por región natural predominante y ordenados por su porcentaje de acceso a crédito. Azul indica OR > 1; † indica p ≥ 0.05."
+#| fig-width: 3.4
+#| fig-height: 4.6
+rm6$deps |> filter(term %in% c("asocSí","educSuperior","fertilizSí","semillaSí","tituloSí")) |>
+  mutate(et = factor(etq[term], etq[c("asocSí","educSuperior","fertilizSí","semillaSí","tituloSí")]),
+         dep = fct_reorder(dep, pct_cred), lab = paste0(f2(or, 1), if_else(p < 0.05, "", "†"))) |>
+  ggplot(aes(et, dep, fill = log(or))) + geom_tile(colour = "white") +
+  geom_text(aes(label = lab), size = 1.9, family = fuente) +
+  scale_fill_gradient2(low = "#B2182B", mid = "white", high = "#2166AC", midpoint = 0, guide = "none",
+                       limits = c(-log(5), log(5)), oob = scales::squish) +
+  facet_grid(region_pred ~ ., scales = "free_y", space = "free_y") +
+  labs(x = NULL, y = NULL) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1), axis.text.y = element_text(size = 6),
+        strip.text.y = element_text(angle = 0), panel.grid.major.y = element_blank())
+```
+
+El patrón por región es claro. En los `r rn("Sierra")` departamentos de sierra, la educación superior (OR mediano = `r rr("Sierra", "educSuperior")`) y la asociación (`r rr("Sierra", "asocSí")`) son significativas en todos ellos. En la costa, en cambio, la educación superior pesa poco (OR mediano = `r rr("Costa", "educSuperior")`, significativa solo en `r rs("Costa", "educSuperior")` de `r rn("Costa")` departamentos) y la asociación también es menor (`r rr("Costa", "asocSí")`), mientras que la semilla certificada es el factor más fuerte (`r rr("Costa", "semillaSí")`). La selva se parece a la sierra en educación (`r rr("Selva", "educSuperior")`) y asociación (`r rr("Selva", "asocSí")`), pero la asistencia técnica es significativa solo en `r rs("Selva", "asistSí")` de sus `r rn("Selva")` departamentos. Las mujeres tienen menos acceso que los hombres sobre todo en la costa (OR mediano = `r rr("Costa", "mujerSí")`, significativo en `r rs("Costa", "mujerSí")` de `r rn("Costa")` departamentos), mientras que en la sierra la brecha es significativa solo en `r rs("Sierra", "mujerSí")` de `r rn("Sierra")`.
+
+Lima, Cusco y Puno ilustran estas diferencias. En Lima el factor más fuerte es el uso de fertilizantes (OR = `r pdp("Lima", "fertilizSí")`) y la educación superior no marca diferencia (OR = `r pdp("Lima", "educSuperior")`). En Cusco y Puno lo que más pesa es la educación superior (OR = `r pdp("Cusco", "educSuperior")` y `r pdp("Puno", "educSuperior")`), y en Puno también la asociación (OR = `r pdp("Puno", "asocSí")`), mientras que los fertilizantes importan mucho menos (OR = `r pdp("Puno", "fertilizSí")`).
+
+El modelo multinivel confirma esta estructura. Del total de la variación no explicada en el acceso a crédito, `r pc(icc["departamento"])` % corresponde a diferencias entre departamentos y `r pc(icc["id_cong"])` % a diferencias entre conglomerados dentro de ellos (ICC total = `r pc(icc["total"])` %), es decir, el entorno local pesa más que el departamental. Permitir que los efectos de la asociación, el título y la semilla cambien entre departamentos mejora el ajuste (χ² = `r f2(rh$lr_ml$Chisq[2], 1)`, `r rh$lr_ml$Df[2]` gl, p < 0.001). Al controlar el conglomerado, la mayoría de los OR cambia poco (la asociación pasa de `r o("asocSí")` a `r or_ml("asocSí")` y la semilla de `r o("semillaSí")` a `r or_ml("semillaSí")`), y la brecha de la sierra se mantiene (OR de `r o("regionSierra")` a `r or_ml("regionSierra")`). Que los OR del modelo multinivel se alejen algo de 1 es esperable, porque se interpretan dentro de un mismo conglomerado y no como promedio de toda la población [45]; lo relevante es que ningún efecto cambia de dirección.
+
+## Discusión
+
+Tras la educación secundaria y superior, pertenecer a una asociación es, junto con la semilla certificada, la variable con el OR más alto. Una explicación es que la organización le da al prestamista información y respaldo que un productor solo no puede ofrecer. Algo parecido se observó con cooperativas en China [9], y también concuerda con el peso de la asistencia técnica en la demanda de crédito en el Perú [6]. Con la ENA, sin embargo, no se puede saber si la asociación facilita el crédito o si los productores más activos son los que se asocian y también se endeudan.
+
+Los OR cercanos a 2 de la semilla certificada y los fertilizantes hay que leerlos con cuidado. Es posible que un productor haya comprado esos insumos con el préstamo, y en ese caso la relación va del crédito al insumo. Como los insumos y el crédito se miden en el mismo periodo, no se pueden separar las dos direcciones.
+
+El título de propiedad aumenta las odds en `r cambio("tituloSí")` %. Es un efecto claro, aunque menor que el de la organización o la educación. Coincide con el argumento de que titular no es suficiente si el productor no está dispuesto a arriesgar su tierra como garantía [2], y con que la evaluación del PETT no encontró efectos promedio sobre el crédito [8]. El efecto de la educación va en la misma línea que lo encontrado en Arequipa, Ayacucho y Loreto [12].
+
+La brecha de la sierra es la mayor del modelo y no desaparece al controlar educación, servicios y características de la unidad agropecuaria. Puede deberse a la distancia a las agencias, al mayor riesgo climático y al menor tamaño de las unidades. Son factores que la ENA mide solo en parte y que otros estudios han relacionado con el acceso [11], [12]. La diferencia por sexo es pequeña en el total de años y deja de ser significativa con el diseño muestral, pero en 2025 es más marcada; conviene seguirla en las próximas ediciones de la encuesta [10]. La tendencia lineal casi nula oculta una caída hasta 2019 y una recuperación desde 2022, que sí aparecen en el modelo por periodos. Nuestro `r pc(r$prev)` % de acceso es menor que la probabilidad cercana a 30 % reportada con la ENA 2015–2019 [11]. La diferencia puede venir de cómo se definió la variable y de la muestra usada; por ejemplo, si se mide la aprobación entre quienes solicitaron, nuestro valor sería de `r f2(de$pct_obt, 1)` %. Por eso no la consideramos una contradicción.
+
+La separación entre solicitud y aprobación cambia la lectura de los resultados. El `r f2(de$pct_obt, 1)` % de los productores que piden un crédito lo obtiene, de modo que el bajo acceso no se debe principalmente a que los prestamistas rechacen solicitudes, sino a que la mayoría de productores no las presenta. Esto coincide con el autorracionamiento y el racionamiento por riesgo descritos en el Perú [2], [5], [6]: el productor no pide crédito por miedo a perder su garantía, porque no lo necesita o porque cree que no se lo darán. La asociación, la educación y la capacitación actúan sobre todo en esa decisión de pedir, posiblemente porque dan información sobre cómo acceder al crédito y reducen el riesgo percibido. El título inscrito y el uso de insumos, en cambio, siguen pesando en la aprobación, lo que es coherente con que el prestamista evalúe garantías y capacidad de pago.
+
+La comparación con el aprendizaje automático respalda el uso de la regresión logística. XGBoost y Random Forest mejoran el AUC por departamento en apenas `r f2(dif_xgb, 3)` y `r f2(as.numeric(cm("Random Forest")) - as.numeric(cm("Logit")), 3)`, y coinciden en la dirección de todos los efectos y en la mayoría de los factores principales, como en el estudio de Vietnam [29] y en la revisión de Christodoulou et al. [30]. En cambio, la regresión logística ofrece efectos con intervalos de confianza, pruebas de significancia y una interpretación directa en odds y probabilidades, que es lo que se necesita para orientar políticas [32].
+
+El otro hallazgo relevante para la política es que los factores del crédito no son los mismos en todo el país. En la costa el crédito acompaña a una agricultura intensiva en insumos y orientada al mercado, donde usar semilla certificada o fertilizantes es la señal más fuerte. En los departamentos de sierra y selva el acceso depende más de la educación y de pertenecer a una organización, lo que es coherente con un entorno donde el prestamista tiene menos información y menos garantías sobre el productor [1], [2]. Por eso un programa de crédito diseñado con el promedio nacional puede funcionar bien en una región y mal en otra. Además, como cerca de una quinta parte de la variación no explicada está entre conglomerados, las condiciones del entorno inmediato, como la cercanía a agencias financieras o la presencia de programas de apoyo, deberían incluirse en futuros estudios.
+
+El estudio tiene limitaciones. Los resultados son asociaciones obtenidas de secciones cruzadas repetidas. Faltan los años 2020 y 2021, y el cambio de diseño muestral de 2023 puede afectar la comparación entre periodos. La variable de crédito no distingue la fuente ni el monto. La ENA tampoco registra la superficie en la mayoría de años ni el historial crediticio, y eso explica en parte que el R² sea moderado. Además, el diseño muestral se incluyó sin estratos, la validación bloqueada se hizo por departamento y no con coordenadas (la ENA no las publica), y los modelos por departamento tienen menos precisión en los departamentos con pocos productores con educación superior o con crédito, como Loreto o Madre de Dios. Finalmente, el modelo de aprobación se estimó solo entre quienes solicitaron y no corrige la autoselección de los solicitantes (por ejemplo, con un modelo de Heckman), porque la ENA no ofrece una variable que afecte la solicitud sin afectar la aprobación.
+
+# Conclusiones
+
+En el periodo 2014–2025, aproximadamente 1 de cada 10 productores agropecuarios del Perú accedió a crédito. En 2019 se alcanzó el mínimo de acceso. Sin embargo, se observa una recuperación parcial hasta 2025. Los factores asociados a mayor probabilidad de acceso (mayores odds) son pertenecer a una asociación, utilizar semillas certificadas o fertilizantes, contar con mayor nivel educativo, contar con capacitación o asistencia técnica y contar con título de propiedad. Por otro lado, los asociados a menor probabilidad de acceso (menores odds) son vivir en la sierra y tener mayor edad. El bajo acceso se explica sobre todo porque pocos productores solicitan crédito (`r f2(de$pct_sol, 1)` %), ya que casi todos los que lo piden lo obtienen (`r f2(de$pct_obt, 1)` %); la asociación, la educación y la capacitación influyen sobre todo en la decisión de pedirlo, y el título inscrito y los insumos en la aprobación. Expresados en probabilidad, pertenecer a una asociación, usar semilla certificada o tener educación superior aumentan la probabilidad de crédito en unos 8 puntos porcentuales, casi el doble del acceso promedio. No pudimos eliminar ninguna de las 16 variables, pues empeoraría el ajuste. El modelo tiene aceptable discriminación, mantiene su capacidad al predecir departamentos que no se utilizaron en la estimación y es consistente con el diseño muestral, para distintos periodos y para los datos de 2025. Frente a cinco modelos alternativos, incluidos Random Forest y XGBoost, la regresión logística pierde muy poca capacidad predictiva y llega a las mismas conclusiones, por lo que es el modelo más adecuado para explicar el acceso al crédito. Sin embargo, los efectos cambian entre los 24 departamentos; en los de costa pesa más el uso de insumos y en los de sierra y selva la educación y la organización. Desde el punto de vista de la política agraria, los resultados sugieren que, más que ampliar la oferta, conviene estimular la demanda de crédito con información, asistencia y apoyo a las organizaciones de productores, junto con la titulación inscrita, y diseñar ese apoyo por región, con énfasis en la sierra. Para corroborar esto sería necesario disponer de datos longitudinales o bien de diseños que permitan estimar efectos causales.
+
+**Disponibilidad de datos y código.** La base consolidada de la ENA 2014–2025 (`r fn(r$n_total)` productores) y la muestra utilizada en la regresión logística (`r fn(r$n)` productores con datos completos) están disponibles en el repositorio del estudio [28]. También están disponibles los scripts de Python que construyen la base desde los microdatos del INEI y los scripts de R que replican los resultados, tablas y figuras de este artículo. Los microdatos originales de la ENA son públicos y pueden descargarse desde el portal del INEI [17].
+
+# Referencias {.unnumbered}
+
+```{=typst}
+#set text(size: 7.8pt)
+#set par(first-line-indent: 0pt, hanging-indent: 1.7em, spacing: 0.45em, justify: true)
+```
+
+[1] J. E. Stiglitz y A. Weiss, "Credit rationing in markets with imperfect information," *Am. Econ. Rev.*, vol. 71, no. 3, pp. 393–410, 1981.
+
+[2] S. R. Boucher, M. R. Carter y C. Guirkinger, "Risk rationing and wealth effects in credit markets: Theory and implications for agricultural development," *Am. J. Agric. Econ.*, vol. 90, no. 2, pp. 409–423, 2008, doi: 10.1111/j.1467-8276.2007.01116.x.
+
+[3] A. Demirgüç-Kunt, L. Klapper, D. Singer y S. Ansar, *The Global Findex Database 2021: Financial Inclusion, Digital Payments, and Resilience in the Age of COVID-19*. Washington, DC, EE. UU.: World Bank, 2022, doi: 10.1596/978-1-4648-1897-4.
+
+[4] C. Guirkinger y S. R. Boucher, "Credit constraints and productivity in Peruvian agriculture," *Agric. Econ.*, vol. 39, no. 3, pp. 295–308, 2008, doi: 10.1111/j.1574-0862.2008.00334.x.
+
+[5] C. Trivelli y H. Venero, "Crédito rural: coexistencia de prestamistas formales e informales, racionamiento y auto-racionamiento," Instituto de Estudios Peruanos, Lima, Perú, Doc. de Trabajo 110, 1999.
+
+[6] J. Alvarado y M. Pintado, "Necesidad, demanda y obtención de crédito en el sector agropecuario en el Perú," Consorcio de Investigación Económica y Social (CIES), Lima, Perú, 2014.
+
+[7] M. Pintado y R. Sampi, "Determinantes del acceso y auto racionamiento del crédito agropecuario en el Perú: enfoque multivariado," Consorcio de Investigación Económica y Social (CIES), Lima, Perú, 2017.
+
+[8] E. Zegarra, J. Escobal y U. Aldana, "Titling, credit constraints and rental markets in rural Peru: Exploring channels and conditioned impacts," Inter-American Development Bank, Research Dept., Washington, DC, EE. UU., 2008.
+
+[9] L. Yu, J. Nilsson, F. Zhan y S. Cheng, "Social capital in cooperative memberships and farmers' access to bank credit—Evidence from Fujian, China," *Agriculture*, vol. 13, no. 2, art. 418, 2023, doi: 10.3390/agriculture13020418.
+
+[10] D. Fletschner y L. Kenney, "Rural women's access to financial services: Credit, savings and insurance," FAO, Roma, Italia, ESA Working Paper 11-07, 2011.
+
+[11] R. Ramos-Sandoval y C. Mendiburu Díaz, "Why do small farmers have less access to credit? A microdata analysis of the Peruvian case," *Nativa*, vol. 12, no. 2, pp. 215–225, 2024, doi: 10.31413/nat.v12i2.16758.
+
+[12] N. S. Claverías Cisneros y A. Cárdenas Pérez, "Inclusión financiera y determinantes del acceso al crédito en la pequeña y mediana agricultura: un análisis del caso peruano," en *Ensayos de investigación económica 2023*, F. González Vigil, Ed. Lima, Perú: Universidad del Pacífico, 2023, pp. 187–215.
+
+[13] W. Vilca Apaza, F. Torres Cruz y E. E. Carpio Vargas, "Blocked and hierarchical cross-validation for agricultural data with spatial autocorrelation: Application to Peru's National Agricultural Survey," en *Proc. 2nd Int. Symp. Green Technologies and Applications (ISGTA 2025)*, Springer Proceedings in Physics, vol. 352, S. Duarte Correia y M. Lahby, Eds. Cham, Suiza: Springer, 2026, pp. 3–13, doi: 10.1007/978-3-032-20151-5_1.
+
+[14] N. K. Taremwa, I. Macharia, E. Bett y E. Majiwa, "Determinants of access to agricultural credit among smallholder rice and maize farmers in the eastern and western provinces of Rwanda," *Agro-Science*, vol. 21, no. 2, pp. 1–11, 2022, doi: 10.4314/as.v21i2.1.
+
+[15] A. Masuka, "Determinants of financial inclusion among smallholder farmers in Zimbabwe," *J. Agribus. Rural Dev.*, vol. 76, no. 2, pp. 197–206, 2025, doi: 10.17306/J.JARD.2025.00016R2.
+
+[16] Z. Bursac, C. H. Gauss, D. K. Williams y D. W. Hosmer, "Purposeful selection of variables in logistic regression," *Source Code Biol. Med.*, vol. 3, art. 17, 2008, doi: 10.1186/1751-0473-3-17.
+
+[17] Instituto Nacional de Estadística e Informática (INEI), "Encuesta Nacional Agropecuaria: microdatos 2014–2025," Lima, Perú. [En línea]. Disponible: http://iinei.inei.gob.pe/microdatos/
+
+[18] P. Peduzzi, J. Concato, E. Kemper, T. R. Holford y A. R. Feinstein, "A simulation study of the number of events per variable in logistic regression analysis," *J. Clin. Epidemiol.*, vol. 49, no. 12, pp. 1373–1379, 1996, doi: 10.1016/S0895-4356(96)00236-3.
+
+[19] D. W. Hosmer, S. Lemeshow y R. X. Sturdivant, *Applied Logistic Regression*, 3.ª ed. Hoboken, NJ, EE. UU.: Wiley, 2013.
+
+[20] N. J. D. Nagelkerke, "A note on a general definition of the coefficient of determination," *Biometrika*, vol. 78, no. 3, pp. 691–692, 1991.
+
+[21] D. McFadden, "Quantitative methods for analyzing travel behaviour of individuals: Some recent developments," Cowles Foundation for Research in Economics, Yale Univ., New Haven, CT, EE. UU., Discussion Paper 474, 1977.
+
+[22] T. Lumley, "Analysis of complex survey samples," *J. Stat. Softw.*, vol. 9, no. 8, pp. 1–19, 2004, doi: 10.18637/jss.v009.i08.
+
+[23] R Core Team, *R: A Language and Environment for Statistical Computing*. Viena, Austria: R Foundation for Statistical Computing. [En línea]. Disponible: https://www.R-project.org/
+
+[24] H. Wickham et al., "Welcome to the tidyverse," *J. Open Source Softw.*, vol. 4, no. 43, art. 1686, 2019, doi: 10.21105/joss.01686.
+
+[25] D. Lüdecke, M. S. Ben-Shachar, I. Patil y D. Makowski, "Extracting, computing and exploring the parameters of statistical models using R," *J. Open Source Softw.*, vol. 5, no. 53, art. 2445, 2020, doi: 10.21105/joss.02445.
+
+[26] D. Lüdecke, M. S. Ben-Shachar, I. Patil, P. Waggoner y D. Makowski, "performance: An R package for assessment, comparison and testing of statistical models," *J. Open Source Softw.*, vol. 6, no. 60, art. 3139, 2021, doi: 10.21105/joss.03139.
+
+[27] X. Robin et al., "pROC: An open-source package for R and S+ to analyze and compare ROC curves," *BMC Bioinformatics*, vol. 12, art. 77, 2011, doi: 10.1186/1471-2105-12-77.
+
+[28] E. J. Cusihuaman Garate, N. A. Ruelas Yana, K. L. Ccora Quispe y Y. Mamani Crúz, "Datos y código: Determinantes del acceso al crédito agropecuario en el Perú, ENA 2014–2025," repositorio GitHub, 2026. [En línea]. Disponible: https://github.com/Edgar-jeferson/Articulo-ENA-2014---2025
+
+[29] H. D. Dang, A. H. T. Dam, T. T. Pham y T. M. T. Nguyen, "Determinants of credit demand of farmers in Lam Dong, Vietnam: A comparison of machine learning and multinomial logit," *Agric. Finance Rev.*, vol. 80, no. 2, pp. 255–274, 2020, doi: 10.1108/AFR-06-2019-0061.
+
+[30] E. Christodoulou, J. Ma, G. S. Collins, E. W. Steyerberg, J. Y. Verbakel y B. Van Calster, "A systematic review shows no performance benefit of machine learning over logistic regression for clinical prediction models," *J. Clin. Epidemiol.*, vol. 110, pp. 12–22, 2019, doi: 10.1016/j.jclinepi.2019.02.004.
+
+[31] S. Lessmann, B. Baesens, H.-V. Seow y L. C. Thomas, "Benchmarking state-of-the-art classification algorithms for credit scoring: An update of research," *Eur. J. Oper. Res.*, vol. 247, no. 1, pp. 124–136, 2015, doi: 10.1016/j.ejor.2015.05.030.
+
+[32] C. Rudin, "Stop explaining black box machine learning models for high stakes decisions and use interpretable models instead," *Nat. Mach. Intell.*, vol. 1, no. 5, pp. 206–215, 2019, doi: 10.1038/s42256-019-0048-x.
+
+[33] L. Breiman, "Random forests," *Mach. Learn.*, vol. 45, no. 1, pp. 5–32, 2001, doi: 10.1023/A:1010933404324.
+
+[34] T. Chen y C. Guestrin, "XGBoost: A scalable tree boosting system," en *Proc. 22nd ACM SIGKDD Int. Conf. Knowledge Discovery and Data Mining*, San Francisco, CA, EE. UU., 2016, pp. 785–794, doi: 10.1145/2939672.2939785.
+
+[35] S. M. Lundberg et al., "From local explanations to global understanding with explainable AI for trees," *Nat. Mach. Intell.*, vol. 2, no. 1, pp. 56–67, 2020, doi: 10.1038/s42256-019-0138-9.
+
+[36] R. Tibshirani, "Regression shrinkage and selection via the lasso," *J. R. Stat. Soc. Ser. B*, vol. 58, no. 1, pp. 267–288, 1996, doi: 10.1111/j.2517-6161.1996.tb02080.x.
+
+[37] J. Friedman, T. Hastie y R. Tibshirani, "Regularization paths for generalized linear models via coordinate descent," *J. Stat. Softw.*, vol. 33, no. 1, pp. 1–22, 2010, doi: 10.18637/jss.v033.i01.
+
+[38] M. N. Wright y A. Ziegler, "ranger: A fast implementation of random forests for high dimensional data in C++ and R," *J. Stat. Softw.*, vol. 77, no. 1, pp. 1–17, 2017, doi: 10.18637/jss.v077.i01.
+
+[39] D. Bates, M. Mächler, B. Bolker y S. Walker, "Fitting linear mixed-effects models using lme4," *J. Stat. Softw.*, vol. 67, no. 1, pp. 1–48, 2015, doi: 10.18637/jss.v067.i01.
+
+[40] J. Merlo et al., "A brief conceptual tutorial of multilevel analysis in social epidemiology: Using measures of clustering in multilevel logistic regression to investigate contextual phenomena," *J. Epidemiol. Community Health*, vol. 60, no. 4, pp. 290–297, 2006, doi: 10.1136/jech.2004.029454.
+
+[41] E. R. DeLong, D. M. DeLong y D. L. Clarke-Pearson, "Comparing the areas under two or more correlated receiver operating characteristic curves: A nonparametric approach," *Biometrics*, vol. 44, no. 3, pp. 837–845, 1988, doi: 10.2307/2531595.
+
+[42] D. R. Roberts et al., "Cross-validation strategies for data with temporal, spatial, hierarchical, or phylogenetic structure," *Ecography*, vol. 40, no. 8, pp. 913–929, 2017, doi: 10.1111/ecog.02881.
+
+[43] B. Van Calster, D. J. McLernon, M. van Smeden, L. Wynants y E. W. Steyerberg, "Calibration: The Achilles heel of predictive analytics," *BMC Med.*, vol. 17, art. 230, 2019, doi: 10.1186/s12916-019-1466-7.
+
+[44] G. W. Brier, "Verification of forecasts expressed in terms of probability," *Mon. Weather Rev.*, vol. 78, no. 1, pp. 1–3, 1950, doi: 10.1175/1520-0493(1950)078<0001:VOFEIT>2.0.CO;2.
+
+[45] C. Mood, "Logistic regression: Why we cannot do what we think we can do, and what we can do about it," *Eur. Sociol. Rev.*, vol. 26, no. 1, pp. 67–82, 2010, doi: 10.1093/esr/jcp006.

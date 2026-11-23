@@ -8,3 +8,9 @@
 *.fls
 *.fdb_latexmk
 resultados_articulo.rds
+# resultados intermedios (se regeneran con los scripts)
+*.rds
+*_log.txt
+# Word intermedio de Quarto (el final, ya formateado, está en articulo_final/)
+/articulo_ENA_credito_IEEE_v2.docx
+reconstruccion/intermedio/

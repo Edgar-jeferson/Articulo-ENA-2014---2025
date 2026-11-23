@@ -1,0 +1,8 @@
+Indicador,Completo,Reducido
+Variables (parámetros),16 (19),6 (9)
+AIC,185 406,189 234
+BIC,185 617,189 340
+R² de Nagelkerke,0.166,0.143
+R² de McFadden,0.124,0.106
+AUC,0.755,0.737
+Exactitud (corte 0.15),0.770,0.768
